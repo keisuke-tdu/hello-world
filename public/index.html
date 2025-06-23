@@ -41,6 +41,10 @@
         <button class="submit">Send</button>
       </form>
     </div>
+
+    <!-- Clearボタンを追加 -->
+    <button id="clear">🧹 キャンバスをクリア</button>
+
     <canvas
       id="canvas"
       width="600"
@@ -59,6 +63,16 @@
 
         let drawing = false
 
+        // ユーザーごとに色を割り当てる
+        const colorMap = {}
+        function getColor(id) {
+          if (!colorMap[id]) {
+            // ランダムな色を作成
+            colorMap[id] = `hsl(${Math.random() * 360}, 100%, 50%)`
+          }
+          return colorMap[id]
+        }
+
         canvas.addEventListener('mousedown', (e) => {
           sendDrawingEvent(e.offsetX, e.offsetY, 'mousedown')
         })
@@ -72,9 +86,9 @@
             sendDrawingEvent(e.offsetX, e.offsetY, 'mousemove')
           }
         })
-        function mousemove(x, y) {
+        function mousemove(x, y, id) {
           if (drawing) {
-            draw(x, y, true)
+            draw(x, y, true, id)
           }
         }
 
@@ -93,7 +107,9 @@
           drawing = false
         }
 
-        function draw(x, y, dragging) {
+        // 描画処理に色を反映
+        function draw(x, y, dragging, id = myId) {
+          ctx.strokeStyle = getColor(id)
           if (dragging) {
             ctx.lineTo(x, y)
             ctx.stroke()
@@ -103,40 +119,46 @@
         }
 
         function sendDrawingEvent(x, y, control) {
-          const message = JSON.stringify({ x, y, control, type: 'paint' })
+          const message = JSON.stringify({ id: myId, x, y, control, type: 'paint' })
           ws.send(message)
+        }
+
+        // クリアボタン押下でサーバに通知
+        const clearButton = document.getElementById('clear')
+        clearButton.onclick = () => {
+          ws.send(JSON.stringify({ type: 'clear' }))
         }
 
         ws.onmessage = (event) => {
           const msg = JSON.parse(event.data)
           if (msg.type === 'paint') {
-            const { x, y, control } = msg
-            console.log({ control })
+            const { id, x, y, control } = msg
             if (control === 'mousedown') {
               mousedown()
             } else if (control === 'mouseup') {
               mouseup()
             } else if (control === 'mousemove') {
-              mousemove(x, y)
+              mousemove(x, y, id)
             } else if (control === 'mouseout') {
               mouseout()
             }
           }
+
+          // クリアメッセージ受信時にキャンバスを全消し
+          if (msg.type === 'clear') {
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+          }
+
           if (msg.type === 'chat') {
             const { id, text } = msg
             const messageList = document.querySelector('.messages')
             const li = document.createElement('li')
-            if (id === myId) {
-              li.textContent = `(${id})自分:` + text
-            } else {
-              li.textContent = id + ': ' + text
-            }
+            li.textContent = id === myId ? `(${id})自分:` + text : id + ': ' + text
             messageList.appendChild(li)
           }
         }
 
         const form = document.querySelector('.form')
-
         form.onsubmit = function (e) {
           e.preventDefault()
           const input = document.querySelector('.input')
