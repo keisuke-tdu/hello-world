@@ -42,9 +42,8 @@ const server = app.listen(port, () => console.log(`Example app listening on port
 
 server.keepAliveTimeout = 120 * 1000;
 server.headersTimeout = 120 * 1000;
-
-const html = `
 */
+const html = `
 <!DOCTYPE html>
 <html>
   <head>
