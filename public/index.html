@@ -19,13 +19,15 @@
       }
       .form {
         display: flex;
+        gap: 10px;
+        margin-top: 10px;
       }
       .input {
         flex: 1;
         padding: 10px;
         border: 1px solid #ccc;
       }
-      .submit {
+      .submit, #clear {
         padding: 10px;
         border: 1px solid #ccc;
         background: #eee;
@@ -39,17 +41,15 @@
       <form class="form">
         <input class="input" autocomplete="off" />
         <button class="submit">Send</button>
+        <button type="button" id="clear">🧹 Clear</button>
       </form>
     </div>
-
-    <!-- Clearボタンを追加 -->
-    <button id="clear">🧹 キャンバスをクリア</button>
 
     <canvas
       id="canvas"
       width="600"
       height="600"
-      style="border: solid 1px black"
+      style="border: solid 1px black; margin-top: 10px"
     ></canvas>
 
     <script>
@@ -63,11 +63,10 @@
 
         let drawing = false
 
-        // ユーザーごとに色を割り当てる
+        // 色マップ（ユーザーごとに色を割り当てる）
         const colorMap = {}
         function getColor(id) {
           if (!colorMap[id]) {
-            // ランダムな色を作成
             colorMap[id] = `hsl(${Math.random() * 360}, 100%, 50%)`
           }
           return colorMap[id]
@@ -107,7 +106,6 @@
           drawing = false
         }
 
-        // 描画処理に色を反映
         function draw(x, y, dragging, id = myId) {
           ctx.strokeStyle = getColor(id)
           if (dragging) {
@@ -123,14 +121,9 @@
           ws.send(message)
         }
 
-        // クリアボタン押下でサーバに通知
-        const clearButton = document.getElementById('clear')
-        clearButton.onclick = () => {
-          ws.send(JSON.stringify({ type: 'clear' }))
-        }
-
         ws.onmessage = (event) => {
           const msg = JSON.parse(event.data)
+
           if (msg.type === 'paint') {
             const { id, x, y, control } = msg
             if (control === 'mousedown') {
@@ -144,20 +137,17 @@
             }
           }
 
-          // クリアメッセージ受信時にキャンバスを全消し
-          if (msg.type === 'clear') {
-            ctx.clearRect(0, 0, canvas.width, canvas.height)
-          }
-
           if (msg.type === 'chat') {
             const { id, text } = msg
             const messageList = document.querySelector('.messages')
             const li = document.createElement('li')
-            li.textContent = id === myId ? `(${id})自分:` + text : id + ': ' + text
+            li.textContent = id === myId ? `(${id})自分: ${text}` : `${id}: ${text}`
+            li.style.color = getColor(id)
             messageList.appendChild(li)
           }
         }
 
+        // 送信フォーム処理
         const form = document.querySelector('.form')
         form.onsubmit = function (e) {
           e.preventDefault()
@@ -166,6 +156,12 @@
           ws.send(JSON.stringify({ id: myId, text, type: 'chat' }))
           input.value = ''
           input.focus()
+        }
+
+        // 🧹 Clearボタン：自分のキャンバスだけクリア
+        const clearButton = document.getElementById('clear')
+        clearButton.onclick = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
         }
 
         ws.onerror = function (error) {
