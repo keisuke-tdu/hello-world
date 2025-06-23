@@ -16,6 +16,8 @@
         list-style: none;
         padding: 0;
         margin: 0;
+        border: 1px solid #ccc;
+        margin-bottom: 5px;
       }
       .form {
         display: flex;
@@ -31,6 +33,19 @@
         background: #eee;
         cursor: pointer;
       }
+      .tools {
+        margin: 10px 0;
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+      .tools label {
+        font-family: sans-serif;
+      }
+      #clearCanvas {
+        padding: 5px 10px;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -41,6 +56,7 @@
         <button class="submit">Send</button>
       </form>
     </div>
+
     <canvas
       id="canvas"
       width="600"
@@ -48,110 +64,139 @@
       style="border: solid 1px black"
     ></canvas>
 
+    <div class="tools">
+      <label for="colorPicker">Color:</label>
+      <input type="color" id="colorPicker" value="#000000" />
+      <label for="lineWidth">Line Width:</label>
+      <input type="range" id="lineWidth" min="1" max="20" value="2" />
+      <button id="clearCanvas">Clear All</button>
+    </div>
     <script>
       function main() {
-        const host = location.origin.replace(/^http/, 'ws')
-        const ws = new WebSocket(host + '/ws')
-        const myId = self.crypto.randomUUID().substr(0, 8)
+        const host = location.origin.replace(/^http/, 'ws');
+        const ws = new WebSocket(host + '/ws');
+        const myId = self.crypto.randomUUID().substr(0, 8);
 
-        const canvas = document.getElementById('canvas')
-        const ctx = canvas.getContext('2d')
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
 
-        let drawing = false
+
+        const colorPicker = document.getElementById('colorPicker');
+        const lineWidthRange = document.getElementById('lineWidth');
+        const clearCanvasBtn = document.getElementById('clearCanvas');
+
+        let drawing = false;
+        let currentColor = colorPicker.value;
+        let currentLineWidth = lineWidthRange.value;
+
+   
 
         canvas.addEventListener('mousedown', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mousedown')
-        })
-        function mousedown() {
-          drawing = true
-          ctx.beginPath()
-        }
+          drawing = true;
+          ctx.strokeStyle = currentColor; 
+          ctx.lineWidth = currentLineWidth;   
+          ctx.beginPath();
+          ctx.moveTo(e.offsetX, e.offsetY);
+          sendDrawingEvent(e.offsetX, e.offsetY, 'mousedown');
+        });
 
         canvas.addEventListener('mousemove', (e) => {
           if (drawing) {
-            sendDrawingEvent(e.offsetX, e.offsetY, 'mousemove')
+            ctx.lineTo(e.offsetX, e.offsetY);
+            ctx.stroke();
+            sendDrawingEvent(e.offsetX, e.offsetY, 'mousemove');
           }
-        })
-        function mousemove(x, y) {
-          if (drawing) {
-            draw(x, y, true)
-          }
-        }
+        });
 
         canvas.addEventListener('mouseup', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mouseup')
-        })
-        function mouseup() {
-          drawing = false
-          ctx.beginPath()
-        }
+          drawing = false;
+          sendDrawingEvent(e.offsetX, e.offsetY, 'mouseup');
+        });
 
         canvas.addEventListener('mouseout', (e) => {
-          sendDrawingEvent(e.offsetX, e.offsetY, 'mouseout')
-        })
-        function mouseout() {
-          drawing = false
-        }
+          drawing = false;
+          sendDrawingEvent(e.offsetX, e.offsetY, 'mouseout');
+        });
 
-        function draw(x, y, dragging) {
-          if (dragging) {
-            ctx.lineTo(x, y)
-            ctx.stroke()
-          } else {
-            ctx.moveTo(x, y)
-          }
-        }
+        colorPicker.addEventListener('change', (e) => {
+          currentColor = e.target.value;
+        });
+
+       
+        lineWidthRange.addEventListener('change', (e) => {
+          currentLineWidth = e.target.value;
+        });
+
+
+        clearCanvasBtn.addEventListener('click', () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height); 
+          ws.send(JSON.stringify({ type: 'paint', control: 'clear' }));
+        });
+
 
         function sendDrawingEvent(x, y, control) {
-          const message = JSON.stringify({ x, y, control, type: 'paint' })
-          ws.send(message)
+          const message = JSON.stringify({
+            x,
+            y,
+            control,
+            type: 'paint',
+            color: currentColor,
+            lineWidth: currentLineWidth,
+          });
+          ws.send(message);
         }
-
         ws.onmessage = (event) => {
-          const msg = JSON.parse(event.data)
+          const msg = JSON.parse(event.data);
+
           if (msg.type === 'paint') {
-            const { x, y, control } = msg
-            console.log({ control })
+            const { x, y, control, color, lineWidth } = msg;
+
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+
             if (control === 'mousedown') {
-              mousedown()
-            } else if (control === 'mouseup') {
-              mouseup()
+              ctx.beginPath();
+              ctx.moveTo(x, y);
             } else if (control === 'mousemove') {
-              mousemove(x, y)
-            } else if (control === 'mouseout') {
-              mouseout()
+              ctx.lineTo(x, y);
+              ctx.stroke();
+            } else if (control === 'clear') {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
+
           }
           if (msg.type === 'chat') {
-            const { id, text } = msg
-            const messageList = document.querySelector('.messages')
-            const li = document.createElement('li')
+            const { id, text } = msg;
+            const messageList = document.querySelector('.messages');
+            const li = document.createElement('li');
             if (id === myId) {
-              li.textContent = `(${id})自分:` + text
+              li.textContent = `(${id})自分:` + text;
             } else {
-              li.textContent = id + ': ' + text
+              li.textContent = id + ': ' + text;
             }
-            messageList.appendChild(li)
+            messageList.appendChild(li);
+            messageList.scrollTop = messageList.scrollHeight;
           }
-        }
+        };
 
-        const form = document.querySelector('.form')
-
+        const form = document.querySelector('.form');
         form.onsubmit = function (e) {
-          e.preventDefault()
-          const input = document.querySelector('.input')
-          const text = input.value
-          ws.send(JSON.stringify({ id: myId, text, type: 'chat' }))
-          input.value = ''
-          input.focus()
-        }
+          e.preventDefault();
+          const input = document.querySelector('.input');
+          const text = input.value;
+          if (text) {
+            ws.send(JSON.stringify({ id: myId, text, type: 'chat' }));
+            input.value = '';
+            input.focus();
+          }
+        };
 
         ws.onerror = function (error) {
-          console.error('WebSocket Error: ', error)
-        }
+          console.error('WebSocket Error: ', error);
+        };
       }
 
-      main()
+      main();
     </script>
   </body>
 </html>
